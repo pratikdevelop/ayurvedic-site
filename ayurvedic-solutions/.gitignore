@@ -1,0 +1,765 @@
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+
+# Node dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+
+
+'use client';
+
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Container,
+  Grid,
+  Card,
+  CardMedia,
+  CardContent,
+  CardActions,
+  TextField,
+  Box,
+  Alert,
+  CircularProgress,
+  IconButton,
+  InputAdornment,
+  Rating,
+} from "@mui/material";
+import { GiHerbsBundle, GiMeditation, GiHealthPotion } from "react-icons/gi";
+import SearchIcon from "@mui/icons-material/Search";
+import { PayPalScriptProvider } from "@paypal/react-paypal-js";
+import TestimonialCard from "../../components/TestimonialCard";
+import dynamic from "next/dynamic";
+const PayPalButtons = dynamic(() => import("@paypal/react-paypal-js").then((mod) => mod.PayPalButtons), {
+  ssr: false, // Disable SSR for this component
+});
+const paypalClientId = "AXBL_2Bz7P3ArXfpL-gwlNjeXwz38eiNCrvTfrUA5efGicHbISs-ZHAW7c3q7iNzwQAFxD3HQczoXIKA"; // Replace with your PayPal Client ID
+
+interface Solution {
+  id: number;
+  title: string;
+  description: string;
+  date: string;
+  affiliate_link?: string;
+  is_premium: boolean;
+}
+
+interface ContactForm {
+  name: string;
+  email: string;
+  message: string;
+}
+
+interface UserProfile {
+  user_id: number;
+  is_premium: boolean;
+  paypal_subscription_id?: string;
+}
+
+interface RatingData {
+  [solutionId: number]: number;
+}
+
+export default function Home() {
+  const [submitTitle, setSubmitTitle] = useState<string>("");
+  const [submitDescription, setSubmitDescription] = useState<string>("");
+  const [submittedSolutions, setSubmittedSolutions] = useState<Solution[]>([]);
+  const [filteredSolutions, setFilteredSolutions] = useState<Solution[]>([]);
+  const [submitSuccess, setSubmitSuccess] = useState<boolean>(false);
+  const [isLoadingSolutions, setIsLoadingSolutions] = useState<boolean>(true);
+
+  const [contactName, setContactName] = useState<string>("");
+  const [contactEmail, setContactEmail] = useState<string>("");
+  const [contactMessage, setContactMessage] = useState<string>("");
+
+  const [recommendedSolution, setRecommendedSolution] = useState<Solution | null>(null);
+  const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(true);
+
+  const [expandedSolution, setExpandedSolution] = useState<number | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isPremium, setIsPremium] = useState<boolean>(false);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [userId, setUserId] = useState<string>("anonymous");
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
+  const [userRatings, setUserRatings] = useState<RatingData>({});
+
+  // Token management functions
+  const saveTokens = (access: string, refresh: string) => {
+    localStorage.setItem('access_token', access);
+    localStorage.setItem('refresh_token', refresh);
+    setAccessToken(access);
+    setRefreshToken(refresh);
+  };
+
+  const clearTokens = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    setAccessToken(null);
+    setRefreshToken(null);
+  };
+
+  const refreshAccessToken = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/token/refresh/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh: refreshToken }),
+      });
+      if (!res.ok) throw new Error("Failed to refresh token");
+      const data = await res.json();
+      saveTokens(data.access, refreshToken!);
+      return data.access;
+    } catch (err) {
+      console.error("Error refreshing token:", err);
+      handleLogout();
+      return null;
+    }
+  };
+
+  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+    let token = accessToken;
+    if (!token) {
+      token = localStorage.getItem('access_token');
+      if (!token) return fetch(url, options);
+    }
+
+    const headers = {
+      ...options.headers,
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+
+    let res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        headers["Authorization"] = `Bearer ${newToken}`;
+        res = await fetch(url, { ...options, headers });
+      }
+    }
+    return res;
+  };
+
+  // Fetch user's ratings
+  const fetchUserRatings = async () => {
+    if (!isLoggedIn || userId === "anonymous") return;
+    try {
+      const res = await fetchWithAuth("http://127.0.0.1:8000/api/interactions/");
+      if (!res.ok) throw new Error("Failed to fetch ratings");
+      const interactions = await res.json();
+      const ratings: RatingData = {};
+      interactions.forEach((interaction: any) => {
+        if (interaction.rating) {
+          ratings[interaction.solution] = interaction.rating;
+        }
+      });
+      setUserRatings(ratings);
+    } catch (err) {
+      console.error("Error fetching ratings:", err);
+    }
+  };
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const storedAccess = localStorage.getItem('access_token');
+      const storedRefresh = localStorage.getItem('refresh_token');
+      
+      if (storedAccess && storedRefresh) {
+        setAccessToken(storedAccess);
+        setRefreshToken(storedRefresh);
+        
+        try {
+          const res = await fetchWithAuth("http://127.0.0.1:8000/api/profile/");
+          if (res.ok) {
+            const data: UserProfile = await res.json();
+            setIsLoggedIn(true);
+            setIsPremium(data.is_premium);
+            setUserId(data.user_id.toString());
+          } else {
+            clearTokens();
+            setIsLoggedIn(false);
+            setUserId("anonymous");
+          }
+        } catch (err) {
+          console.error("Error checking auth:", err);
+          clearTokens();
+          setIsLoggedIn(false);
+          setUserId("anonymous");
+        }
+      }
+    };
+
+    const fetchSolutions = async () => {
+      try {
+        const res = await fetchWithAuth("http://127.0.0.1:8000/api/solutions/");
+        if (!res.ok) throw new Error("Failed to fetch solutions");
+        const data = await res.json();
+        setSubmittedSolutions(data);
+        setFilteredSolutions(data);
+      } catch (err) {
+        console.error("Error fetching solutions:", err);
+        setErrorMessage("Could not load solutions. Please try again later.");
+      } finally {
+        setIsLoadingSolutions(false);
+      }
+    };
+
+    const fetchRecommendation = async () => {
+      try {
+        const res = await fetchWithAuth(`http://127.0.0.1:8000/api/recommend/${userId}/`);
+        if (!res.ok) throw new Error("Failed to fetch recommendation");
+        const data = await res.json();
+        setRecommendedSolution(data);
+      } catch (err) {
+        console.error("Error fetching recommendation:", err);
+        setErrorMessage("Could not load recommendation. Please try again later.");
+      } finally {
+        setIsLoadingRecommendation(false);
+      }
+    };
+
+    checkAuth();
+    fetchSolutions();
+    if (userId) {
+      fetchRecommendation();
+      fetchUserRatings();
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    const filtered = submittedSolutions.filter(
+      (solution) =>
+        (solution.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          solution.description.toLowerCase().includes(searchQuery.toLowerCase())) &&
+        (isPremium || !solution.is_premium)
+    );
+    setFilteredSolutions(filtered);
+  }, [searchQuery, submittedSolutions, isPremium]);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const newSolution = { title: submitTitle, description: submitDescription };
+    try {
+      const res = await fetchWithAuth("http://127.0.0.1:8000/api/solutions/", {
+        method: "POST",
+        body: JSON.stringify(newSolution),
+      });
+      if (!res.ok) throw new Error("Failed to submit solution");
+      const data = await res.json();
+      setSubmittedSolutions([data, ...submittedSolutions]);
+      setFilteredSolutions([data, ...filteredSolutions]);
+      setSubmitTitle("");
+      setSubmitDescription("");
+      setSubmitSuccess(true);
+      setTimeout(() => {
+        setSubmitSuccess(false);
+        document.getElementById("solutions")?.scrollIntoView({ behavior: "smooth" });
+      }, 1500);
+    } catch (err) {
+      console.error("Error submitting solution:", err);
+      setErrorMessage("Failed to submit solution. Please try again.");
+    }
+  };
+
+  const handleContactSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const contactData: ContactForm = { name: contactName, email: contactEmail, message: contactMessage };
+    try {
+      const res = await fetchWithAuth("http://127.0.0.1:8000/api/contact/", {
+        method: "POST",
+        body: JSON.stringify(contactData),
+      });
+      if (!res.ok) throw new Error("Failed to send message");
+      setContactName("");
+      setContactEmail("");
+      setContactMessage("");
+      alert("Message sent successfully!");
+    } catch (err) {
+      console.error("Error submitting contact:", err);
+      setErrorMessage("Failed to send message. Please try again.");
+    }
+  };
+
+  const trackView = async (solutionId: number, rating?: number) => {
+    try {
+      const interaction = { user_id: userId, solution: solutionId, action: "view", rating };
+      const res = await fetchWithAuth("http://127.0.0.1:8000/api/interactions/", {
+        method: "POST",
+        body: JSON.stringify(interaction),
+      });
+      if (!res.ok) throw new Error("Failed to track view");
+      if (rating) {
+        setUserRatings(prev => ({ ...prev, [solutionId]: rating }));
+      }
+      const recRes = await fetchWithAuth(`http://127.0.0.1:8000/api/recommend/${userId}/`);
+      if (!recRes.ok) throw new Error("Failed to refresh recommendation");
+      const data = await recRes.json();
+      setRecommendedSolution(data);
+    } catch (err) {
+      console.error("Error tracking view:", err);
+      setErrorMessage("Failed to track interaction. Recommendation may not update.");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetchWithAuth("http://127.0.0.1:8000/api/logout/", {
+        method: "POST",
+        body: JSON.stringify({ refresh: refreshToken }),
+      });
+      if (res.ok) {
+        clearTokens();
+        setIsLoggedIn(false);
+        setIsPremium(false);
+        setUserId("anonymous");
+        setUserRatings({});
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("Error logging out:", err);
+      setErrorMessage("Failed to logout. Please try again.");
+    }
+  };
+
+  const [isScrolled, setIsScrolled] = useState<boolean>(false);
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 50);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  return (
+    <PayPalScriptProvider options={{ "client-id": paypalClientId }}>
+      <Box sx={{ minHeight: "100vh", bgcolor: "#f5f5f5" }}>
+        {/* Sticky Navigation */}
+        <AppBar position="sticky" sx={{ bgcolor: isScrolled ? "#388e3c" : "transparent", boxShadow: isScrolled ? 4 : 0 }}>
+          <Toolbar sx={{ maxWidth: "1280px", mx: "auto", width: "100%" }}>
+            <Typography variant="h6" sx={{ flexGrow: 1, color: isScrolled ? "white" : "#388e3c" }}>
+              Ayurvedic Solutions
+            </Typography>
+            {["Home", "Submit", "Solutions", "About", "Contact"].map((item) => (
+              <Button
+                key={item}
+                href={`#${item.toLowerCase()}`}
+                sx={{ color: isScrolled ? "white" : "#388e3c", "&:hover": { color: "#ffca28" } }}
+              >
+                {item}
+              </Button>
+            ))}
+            {isLoggedIn ? (
+              <>
+                <Button href="/profile" sx={{ color: isScrolled ? "white" : "#388e3c" }}>Profile</Button>
+                <Button onClick={handleLogout} sx={{ color: isScrolled ? "white" : "#388e3c" }}>Logout</Button>
+              </>
+            ) : (
+              <>
+                <Button href="/login" sx={{ color: isScrolled ? "white" : "#388e3c" }}>Login</Button>
+                <Button href="/signup" sx={{ color: isScrolled ? "white" : "#388e3c" }}>Sign Up</Button>
+              </>
+            )}
+{!isPremium && isLoggedIn && (
+              <Box sx={{ position: "relative" }}>
+                <Button sx={{ color: "#ffca28" }}>Go Premium</Button>
+                <PayPalButtons
+                  style={{
+                    shape: "rect",
+                    color: "gold",
+                    layout: "vertical",
+                    label: "subscribe",
+                  }}
+                  createSubscription={(data, actions) => {
+                    return actions.subscription.create({
+                      plan_id: "P-6P686470K08884616M73MUUI", // Your existing Plan ID
+                      custom_id: userId,
+                    });
+                  }}
+                  onApprove={async (data, actions) => {
+                    try {
+                      const res = await fetchWithAuth("http://127.0.0.1:8000/api/profile/", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          paypal_subscription_id: data.subscriptionID,
+                          is_premium: true,
+                        }),
+                      });
+                      if (!res.ok) throw new Error("Failed to update profile");
+                      const profileData = await res.json();
+                      setIsPremium(true);
+                      setUserId(profileData.user_id.toString());
+                      alert(`Subscription activated! ID: ${data.subscriptionID}`);
+                    } catch (err) {
+                      console.error("PayPal subscription error:", err);
+                      setErrorMessage("Failed to activate premium subscription. Please try again.");
+                    }
+                  }}
+                  onError={(err) => {
+                    console.error("PayPal error:", err);
+                    setErrorMessage("An error occurred with PayPal. Please try again later.");
+                  }}
+                />
+              </Box>
+            )}
+          </Toolbar>
+        </AppBar>
+
+        {/* Error Message */}
+        <AnimatePresence>
+          {errorMessage && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <Alert
+                severity="error"
+                sx={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", zIndex: 1300, maxWidth: "600px" }}
+                action={<IconButton color="inherit" size="small" onClick={() => setErrorMessage("")}>X</IconButton>}
+              >
+                {errorMessage}
+              </Alert>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Hero Section */}
+        <Container id="home" sx={{ py: 10, textAlign: "center", bgcolor: "#e8f5e9" }}>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
+            <Typography variant="h3" sx={{ color: "#388e3c", fontWeight: "bold", mb: 2 }}>
+              Ayurvedic Solutions
+            </Typography>
+            <Typography variant="h6" color="textSecondary" sx={{ mb: 4, maxWidth: "600px", mx: "auto" }}>
+              Explore natural remedies rooted in the timeless wisdom of Ayurveda.
+            </Typography>
+            <Box sx={{ display: "flex", gap: 2, justifyContent: "center" }}>
+              <Button
+                variant="contained"
+                sx={{ bgcolor: "#388e3c", "&:hover": { bgcolor: "#2e7d32" } }}
+                size="large"
+                onClick={() => document.getElementById("submit")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Submit Your Solution
+              </Button>
+              <Button
+                variant="outlined"
+                sx={{ borderColor: "#388e3c", color: "#388e3c", "&:hover": { borderColor: "#2e7d32", bgcolor: "#e8f5e9" } }}
+                size="large"
+                onClick={() => document.getElementById("solutions")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Explore Solutions
+              </Button>
+            </Box>
+          </motion.div>
+        </Container>
+
+        {/* Recommendation Section */}
+        <Container sx={{ py: 8 }}>
+          {isLoadingRecommendation ? (
+            <Box sx={{ textAlign: "center" }}>
+              <CircularProgress />
+            </Box>
+          ) : recommendedSolution ? (
+            <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
+              <Typography variant="h4" sx={{ color: "#388e3c", textAlign: "center", mb: 4 }}>
+                Recommended for You
+              </Typography>
+              <Card sx={{ maxWidth: 600, mx: "auto", boxShadow: 3 }}>
+                <CardMedia
+                  component="img"
+                  height="250"
+                  image={`/images/${recommendedSolution.title.toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                  alt={recommendedSolution.title}
+                  onError={(e) => (e.currentTarget.src = "/images/default-ayurveda.jpg")}
+                />
+                <CardContent>
+                  <Typography variant="h5" gutterBottom>{recommendedSolution.title}</Typography>
+                  <Typography variant="body1" color="textSecondary">{recommendedSolution.description}</Typography>
+                  <Typography variant="caption" color="textSecondary" display="block" sx={{ mt: 2 }}>
+                    Posted on: {recommendedSolution.date}
+                  </Typography>
+                  {recommendedSolution.affiliate_link && (
+                    <Button href={recommendedSolution.affiliate_link} target="_blank" sx={{ mt: 2, color: "#388e3c" }}>
+                      Buy Ingredients
+                    </Button>
+                  )}
+                </CardContent>
+                <CardActions sx={{ justifyContent: "center" }}>
+                  <Rating
+                    name={`rating-${recommendedSolution.id}`}
+                    value={userRatings[recommendedSolution.id] || 0}
+                    onChange={(_, newValue) => {
+                      if (newValue) trackView(recommendedSolution.id, newValue);
+                    }}
+                    precision={1}
+                  />
+                </CardActions>
+              </Card>
+            </motion.div>
+          ) : null}
+        </Container>
+
+        {/* Ayurvedic Principles Section */}
+        <Container sx={{ py: 8, bgcolor: "#fff8e1" }}>
+          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
+            <Typography variant="h4" sx={{ color: "#ffca28", textAlign: "center", mb: 4 }}>Ayurvedic Principles</Typography>
+            <Grid container spacing={4}>
+              {[
+                { icon: <GiHerbsBundle size={50} color="#388e3c" />, title: "Natural Remedies", desc: "Harness the power of herbs." },
+                { icon: <GiMeditation size={50} color="#ffca28" />, title: "Holistic Approach", desc: "Balance mind, body, and spirit." },
+                { icon: <GiHealthPotion size={50} color="#388e3c" />, title: "Preventive Care", desc: "Maintain health daily." },
+              ].map((principle, index) => (
+                <Grid size={4} key={index}>
+                  <Card sx={{ textAlign: "center", p: 2, boxShadow: 2 }}>
+                    <CardContent>
+                      {principle.icon}
+                      <Typography variant="h6" sx={{ mt: 2 }}>{principle.title}</Typography>
+                      <Typography variant="body2" color="textSecondary">{principle.desc}</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </motion.div>
+        </Container>
+
+
+        <Container id="submit" sx={{ py: 8 }}>
+          <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }}>
+            <Typography variant="h4" sx={{ color: "#388e3c", textAlign: "center", mb: 4 }}>Share Your Ayurvedic Solution</Typography>
+            <Card sx={{ maxWidth: 600, mx: "auto", p: 3, boxShadow: 3 }}>
+              <form onSubmit={handleSubmit}>
+                <TextField
+                  label="Title"
+                  value={submitTitle}
+                  onChange={(e) => setSubmitTitle(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                  placeholder="e.g., Turmeric Tea for Immunity"
+                  required
+                  variant="outlined"
+                />
+                <TextField
+                  label="Description"
+                  value={submitDescription}
+                  onChange={(e) => setSubmitDescription(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                  multiline
+                  rows={6}
+                  placeholder="Describe your remedy..."
+                  required
+                  variant="outlined"
+                />
+                <Button type="submit" variant="contained" sx={{ bgcolor: "#388e3c", "&:hover": { bgcolor: "#2e7d32" }, mt: 2 }} fullWidth>
+                  Submit Solution
+                </Button>
+              </form>
+            </Card>
+            <AnimatePresence>
+              {submitSuccess && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+                  <Alert severity="success" sx={{ mt: 2, mx: "auto", maxWidth: 600 }}>Solution submitted successfully!</Alert>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        </Container>
+
+        {/* Solutions Section */}
+        <Container id="solutions" sx={{ py: 8, bgcolor: "#fff8e1" }}>
+          <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }}>
+            <Typography variant="h4" sx={{ color: "#ffca28", textAlign: "center", mb: 4 }}>All Ayurvedic Solutions</Typography>
+            <TextField
+              label="Search Solutions"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              fullWidth
+              margin="normal"
+              variant="outlined"
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ maxWidth: 600, mx: "auto", mb: 4 }}
+            />
+            {isLoadingSolutions ? (
+              <Box sx={{ textAlign: "center" }}>
+                <CircularProgress />
+              </Box>
+            ) : filteredSolutions.length === 0 ? (
+              <Typography variant="body1" color="textSecondary" align="center">
+                No solutions match your search. Try submitting one!
+              </Typography>
+            ) : (
+              <Grid container spacing={4}>
+                {filteredSolutions.map((solution: Solution) => (
+                  <Grid size={4} key={solution.id}>
+                    <Card sx={{ boxShadow: 2 }}>
+                      <CardMedia
+                        component="img"
+                        height="200"
+                        image={`/images/${solution.title.toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                        alt={solution.title}
+                        onError={(e) => (e.currentTarget.src = "/images/default-ayurveda.jpg")}
+                      />
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>{solution.title}</Typography>
+                        <AnimatePresence>
+                          {expandedSolution === solution.id ? (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
+                              <Typography variant="body2" color="textSecondary">{solution.description}</Typography>
+                              <Typography variant="caption" color="textSecondary" display="block" sx={{ mt: 1 }}>
+                                Posted on: {solution.date}
+                              </Typography>
+                              {solution.affiliate_link && (
+                                <Button href={solution.affiliate_link} target="_blank" sx={{ mt: 2, color: "#388e3c" }}>
+                                  Buy Ingredients
+                                </Button>
+                              )}
+                            </motion.div>
+                          ) : (
+                            <Typography variant="body2" color="textSecondary" sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                              {solution.description}
+                            </Typography>
+                          )}
+                        </AnimatePresence>
+                      </CardContent>
+                      <CardActions sx={{ justifyContent: "space-between" }}>
+                        <Button
+                          size="small"
+                          sx={{ color: "#388e3c" }}
+                          onClick={() => {
+                            setExpandedSolution(expandedSolution === solution.id ? null : solution.id);
+                            if (expandedSolution !== solution.id) trackView(solution.id);
+                          }}
+                        >
+                          {expandedSolution === solution.id ? "Show Less" : "Read More"}
+                        </Button>
+                        <Rating
+                          name={`rating-${solution.id}`}
+                          value={userRatings[solution.id] || 0}
+                          onChange={(_, newValue) => {
+                            if (newValue) trackView(solution.id, newValue);
+                          }}
+                          precision={1}
+                          disabled={!isLoggedIn}
+                        />
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            )}
+          </motion.div>
+        </Container>
+
+        {/* About Section */}
+        <Container id="about" sx={{ py: 8 }}>
+          <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }}>
+            <Typography variant="h4" sx={{ color: "#388e3c", textAlign: "center", mb: 4 }}>About Us</Typography>
+            <Typography variant="body1" color="textSecondary" align="center" sx={{ maxWidth: "800px", mx: "auto" }}>
+              Ayurvedic Solutions is a community-driven platform dedicated to sharing the timeless wisdom of Ayurveda. Founded in 2025, we bridge ancient knowledge with modern needs.
+            </Typography>
+          </motion.div>
+        </Container>
+
+        {/* Testimonials Section */}
+        <Container sx={{ py: 8, bgcolor: "#fff8e1" }}>
+          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
+            <Typography variant="h4" sx={{ color: "#ffca28", textAlign: "center", mb: 4 }}>Success Stories</Typography>
+            <Grid container spacing={4}>
+              <Grid size={6}>
+                <TestimonialCard quote="Using Ayurvedic Solutions transformed my approach to health!" author="Sarah Johnson" role="Yoga Instructor" />
+              </Grid>
+              <Grid size={6}>
+                <TestimonialCard quote="Found natural remedies that actually work!" author="Raj Patel" role="Nutritionist" />
+              </Grid>
+            </Grid>
+          </motion.div>
+        </Container>
+
+        {/* Contact Section */}
+        <Container id="contact" sx={{ py: 8 }}>
+          <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }}>
+            <Typography variant="h4" sx={{ color: "#388e3c", textAlign: "center", mb: 4 }}>Contact Us</Typography>
+            <Card sx={{ maxWidth: 600, mx: "auto", p: 3, boxShadow: 3 }}>
+              <form onSubmit={handleContactSubmit}>
+                <TextField
+                  label="Name"
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                  placeholder="Your Name"
+                  required
+                  variant="outlined"
+                />
+                <TextField
+                  label="Email"
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                  placeholder="Your Email"
+                  required
+                  variant="outlined"
+                />
+                <TextField
+                  label="Message"
+                  value={contactMessage}
+                  onChange={(e) => setContactMessage(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                  multiline
+                  rows={6}
+                  placeholder="Your Message"
+                  required
+                  variant="outlined"
+                />
+                <Button type="submit" variant="contained" sx={{ bgcolor: "#388e3c", "&:hover": { bgcolor: "#2e7d32" }, mt: 2 }} fullWidth>
+                  Send Message
+                </Button>
+              </form>
+            </Card>
+          </motion.div>
+        </Container>
+
+        {/* Footer */}
+        <Box sx={{ bgcolor: "#388e3c", color: "white", p: 4, textAlign: "center" }}>
+          <Typography variant="body2">© 2025 Ayurvedic Solutions. All rights reserved.</Typography>
+          <Box sx={{ mt: 2, display: "flex", justifyContent: "center", gap: 2 }}>
+            {["About", "Contact", "Privacy"].map((item) => (
+              <Button key={item} href={`#${item.toLowerCase()}`} sx={{ color: "white", "&:hover": { color: "#ffca28" } }}>
+                {item}
+              </Button>
+            ))}
+          </Box>
+        </Box>
+      </Box>
+    </PayPalScriptProvider>
+  );
+}
