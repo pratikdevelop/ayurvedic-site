@@ -15,7 +15,7 @@ import {
   FormControlLabel,
   Checkbox,
 } from "@mui/material";
-import { fetchWithAuth, clearTokens } from "../../lib/auth";
+import { fetchWithAuth, clearTokens } from "../lib/auth";
 
 const healthConcernsList = [
   "Digestive Issues (Indigestion, Bloating, Acidity)",

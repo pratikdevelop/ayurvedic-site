@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Container, Typography, TextField, Button, Alert } from "@mui/material";
-import { storeTokens } from "../../lib/auth";
+import { storeTokens } from "../lib/auth";
 import Link from "next/link";
 
 export default function Login() {
@@ -24,7 +24,7 @@ export default function Login() {
       const data = await res.json();
       storeTokens(data.access, data.refresh);
       router.push("/");
-    } catch (err) {
+    } catch (err: any) {
       setErrorMessage("Login failed: " + err.message);
     }
   };
@@ -51,7 +51,7 @@ export default function Login() {
           margin="normal"
           required
         />
-        <Typography variant="span" className="ml-auto text-slate-700" >
+        <Typography  className="ml-auto text-slate-700" >
         Don't have an account?
         <Link className="text-blue-600" href="/signup"> Sign Up</Link>
       

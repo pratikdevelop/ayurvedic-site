@@ -1,6 +1,6 @@
 /ayurvedic-solutions/node_modules
 /ayurvedic-solutions/.next
 /ayurvedic-solutions/.data
-/ayurvedic_api/node_modules
-/ayurvedic_api/.env
+/node_modules
+/.env
 /a

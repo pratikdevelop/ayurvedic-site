@@ -1,710 +1,467 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 import {
-  AppBar, Toolbar, Typography, Button, Container, Grid, Card, CardMedia, CardContent, CardActions,
-  TextField, Box, Alert, CircularProgress, IconButton, InputAdornment, Rating, Chip, Select, MenuItem, FormControl, InputLabel, List, ListItem, ListItemText, Checkbox, FormGroup, FormControlLabel,
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Container,
+  Box,
+  Grid,
+  Card,
+  CardContent,
+  Avatar,
+  Divider,
+  IconButton,
+  useMediaQuery,
+  Menu,
+  MenuItem,
 } from "@mui/material";
-import { GiHerbsBundle, GiMeditation, GiHealthPotion } from "react-icons/gi";
-import SearchIcon from "@mui/icons-material/Search";
-import FavoriteIcon from "@mui/icons-material/Favorite";
-import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
-import TestimonialCard from "../components/TestimonialCard";
-import { fetchWithAuth, getAccessToken, clearTokens } from "../lib/auth";
-
-const paypalClientId = "AXBL_2Bz7P3ArXfpL-gwlNjeXwz38eiNCrvTfrUA5efGicHbISs-ZHAW7c3q7iNzwQAFxD3HQczoXIKA";
-
-interface Solution {
-  id: string;
-  solution_id: string;
-  title: string;
-  description: string;
-  date: string;
-  affiliate_link?: string;
-  is_premium: boolean;
-  categories: { id: string; name: string }[];
-  comments: { id: string; user: string; text: string; created_at: string }[];
-  favorited: boolean;
-}
-
-const healthConcernsList = [
-  "Digestive Issues (Indigestion, Bloating, Acidity)",
-  "Stress and Anxiety",
-  "Sleep Problems (Insomnia)",
-  "Joint Pain and Inflammation",
-  "Skin Issues (Acne, Eczema, Dryness)",
-  "Weak Immunity",
-  "High Blood Pressure (Hypertension)",
-  "Diabetes (Madhumeha)",
-  "Respiratory Issues (Asthma, Bronchitis, Allergies)",
-  "Hair Fall and Thinning",
-  "Fatigue and Low Energy"
-];
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  GiHerbsBundle, 
+  GiMeditation, 
+  GiHealthPotion,
+  GiSandsOfTime,
+  GiHealing,
+  GiWeight
+} from "react-icons/gi";
+import { 
+  FaLeaf,
+  FaUserMd,
+  FaHeart,
+  FaRegClock,
+  FaArrowRight,
+  FaBars
+} from "react-icons/fa";
+import TestimonialCard from "./components/TestimonialCard";
 
 export default function Home() {
-  const [submitTitle, setSubmitTitle] = useState<string>("");
-  const [submitDescription, setSubmitDescription] = useState<string>("");
-  const [submittedSolutions, setSubmittedSolutions] = useState<Solution[]>([]);
-  const [filteredSolutions, setFilteredSolutions] = useState<Solution[]>([]);
-  const [submitSuccess, setSubmitSuccess] = useState<boolean>(false);
-  const [isLoadingSolutions, setIsLoadingSolutions] = useState<boolean>(true);
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [mobileMenuAnchor, setMobileMenuAnchor] = useState<null | HTMLElement>(null);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
-  const [contactName, setContactName] = useState<string>("");
-  const [contactEmail, setContactEmail] = useState<string>("");
-  const [contactMessage, setContactMessage] = useState<string>("");
-
-  const [recommendedSolution, setRecommendedSolution] = useState<Solution | null>(null);
-  const [recommendationReason, setRecommendationReason] = useState<string>("");
-  const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(true);
-
-  const [expandedSolution, setExpandedSolution] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [isPremium, setIsPremium] = useState<boolean>(false);
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [userId, setUserId] = useState<string>("anonymous");
-  const [commentText, setCommentText] = useState<string>("");
-  const [healthConcerns, setHealthConcerns] = useState<string[]>([]);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-       
-        
-        const res = await fetchWithAuth("http://localhost:5000/api/user-profile");
-        if (!res.ok) throw new Error("Not authenticated");
-        const data = await res.json();
-        setIsLoggedIn(true);
-        setIsPremium(data.is_premium);
-        setUserId(data.user_id);
-        setHealthConcerns(data.health_concerns || []);
-      } catch (err) {
-        setIsLoggedIn(false);
-        setUserId("anonymous");
-        setHealthConcerns([]);
-      }
-    };
-
-    const fetchSolutions = async () => {
-      try {
-        const res = await fetchWithAuth("http://localhost:5000/api/solutions");
-        if (!res.ok) throw new Error("Failed to fetch solutions");
-        const data = await res.json();
-        setSubmittedSolutions(data);
-        setFilteredSolutions(data);
-      } catch (err) {
-        setErrorMessage("Could not load solutions: " + err.message);
-      } finally {
-        setIsLoadingSolutions(false);
-      }
-    };
-
-    const fetchCategories = async () => {
-      try {
-        const res = await fetch("http://localhost:5000/api/categories");
-        if (!res.ok) throw new Error("Failed to fetch categories");
-        const data = await res.json();
-        setCategories(data);
-      } catch (err) {
-        setErrorMessage("Could not load categories: " + err.message);
-      }
-    };
-
-    const fetchRecommendation = async () => {
-      if (userId === "anonymous") {
-        setIsLoadingRecommendation(false);
-        return;
-      }
-      try {
-        const res = await fetchWithAuth(`http://localhost:5000/api/recommend/${userId}`);
-        if (!res.ok) throw new Error("Failed to fetch recommendation");
-        const data = await res.json();
-        setRecommendedSolution(data);
-        if (healthConcerns.length > 0 && data.title && healthConcerns.includes(data.title)) {
-          setRecommendationReason(`Based on your concern: ${data.title}`);
-        } else if (data.categories?.length > 0) {
-          setRecommendationReason(`Based on your interest in ${data.categories[0].name}`);
-        } else {
-          setRecommendationReason("Curated for you");
-        }
-      } catch (err) {
-        setErrorMessage("Could not load recommendation: " + err.message);
-      } finally {
-        setIsLoadingRecommendation(false);
-      }
-    };
-
-    checkAuth();
-    fetchSolutions();
-    fetchCategories();
-    fetchRecommendation();
-  }, []);
-
-  useEffect(() => {
-    const filtered = submittedSolutions.filter(
-      (solution) =>
-        (solution.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          solution.description.toLowerCase().includes(searchQuery.toLowerCase())) &&
-        (isPremium || !solution.is_premium) &&
-        (selectedCategory === "all" || solution.categories.some(cat => cat.name === selectedCategory))
-    );
-    setFilteredSolutions(filtered);
-  }, [searchQuery, submittedSolutions, isPremium, selectedCategory]);
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!isLoggedIn) {
-      setErrorMessage("Please log in to submit solutions.");
-      return;
-    }
-    const newSolution = { title: submitTitle, description: submitDescription };
-    try {
-      const res = await fetchWithAuth("http://localhost:5000/api/solutions", {
-        method: "POST",
-        body: JSON.stringify(newSolution),
-      });
-      if (!res.ok) throw new Error("Failed to submit solution");
-      const data = await res.json();
-      setSubmittedSolutions([data, ...submittedSolutions]);
-      setFilteredSolutions([data, ...filteredSolutions]);
-      setSubmitTitle("");
-      setSubmitDescription("");
-      setSubmitSuccess(true);
-      setTimeout(() => setSubmitSuccess(false), 1500);
-    } catch (err) {
-      setErrorMessage("Failed to submit solution: " + err.message);
-    }
-  };
-
-  const handleContactSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const contactData = { name: contactName, email: contactEmail, message: contactMessage };
-    try {
-      const res = await fetch("http://localhost:5000/api/contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(contactData),
-      });
-      if (!res.ok) throw new Error("Failed to send message");
-      setContactName("");
-      setContactEmail("");
-      setContactMessage("");
-      alert("Message sent successfully!");
-    } catch (err) {
-      setErrorMessage("Failed to send message: " + err.message);
-    }
-  };
-
-  const handleHealthConcernsSubmit = async () => {
-    if (!isLoggedIn) {
-      setErrorMessage("Please log in to save health concerns.");
-      return;
-    }
-    try {
-      const res = await fetchWithAuth("http://localhost:5000/api/user-profile", {
-        method: "POST",
-        body: JSON.stringify({ health_concerns: healthConcerns }),
-      });
-      if (!res.ok) throw new Error("Failed to update health concerns");
-      setErrorMessage("");
-      alert("Health concerns updated successfully!");
-      const recRes = await fetchWithAuth(`http://localhost:5000/api/recommend/${userId}`);
-      if (recRes.ok) {
-        const data = await recRes.json();
-        setRecommendedSolution(data);
-        setRecommendationReason(`Based on your concern: ${healthConcerns[0] || data.title}`);
-      }
-    } catch (err) {
-      setErrorMessage("Failed to update health concerns: " + err.message);
-    }
-  };
-
-  const handleHealthConcernChange = (concern: string) => {
-    setHealthConcerns(prev =>
-      prev.includes(concern)
-        ? prev.filter(c => c !== concern)
-        : [...prev, concern]
-    );
-  };
-
-  const trackView = async (solutionId: string, rating?: number) => {
-    if (!isLoggedIn) return;
-    try {
-      const interaction = { user_id: userId, solution: solutionId, action: "view", rating };
-      const res = await fetchWithAuth("http://localhost:5000/api/interactions", {
-        method: "POST",
-        body: JSON.stringify(interaction),
-      });
-      if (!res.ok) throw new Error("Failed to track view");
-      const recRes = await fetchWithAuth(`http://localhost:5000/api/recommend/${userId}`);
-      if (!recRes.ok) throw new Error("Failed to refresh recommendation");
-      const data = await recRes.json();
-      setRecommendedSolution(data);
-      setRecommendationReason(healthConcerns.includes(data.title) ? `Based on your concern: ${data.title}` : `Based on your recent activity`);
-    } catch (err) {
-      setErrorMessage("Failed to track interaction: " + err.message);
-    }
-  };
-
-  const handleFavorite = async (solutionId: string, favorited: boolean) => {
-    if (!isLoggedIn) {
-      setErrorMessage("Please log in to favorite solutions.");
-      return;
-    }
-    try {
-      const method = favorited ? "DELETE" : "POST";
-      const res = await fetchWithAuth(`http://localhost:5000/api/favorite/${solutionId}`, { method });
-      if (!res.ok) throw new Error("Failed to update favorite");
-      setSubmittedSolutions(submittedSolutions.map(s => s.id === solutionId ? { ...s, favorited: !favorited } : s));
-      setFilteredSolutions(filteredSolutions.map(s => s.id === solutionId ? { ...s, favorited: !favorited } : s));
-      if (recommendedSolution?.id === solutionId) setRecommendedSolution({ ...recommendedSolution, favorited: !favorited });
-    } catch (err) {
-      setErrorMessage("Failed to update favorite: " + err.message);
-    }
-  };
-
-  const handleComment = async (solutionId: string) => {
-    if (!isLoggedIn) {
-      setErrorMessage("Please log in to comment.");
-      return;
-    }
-    try {
-      const res = await fetchWithAuth("http://localhost:5000/api/comments", {
-        method: "POST",
-        body: JSON.stringify({ solution: solutionId, text: commentText }),
-      });
-      if (!res.ok) throw new Error("Failed to add comment");
-      const newComment = await res.json();
-      setSubmittedSolutions(submittedSolutions.map(s =>
-        s.id === solutionId ? { ...s, comments: [...s.comments, newComment] } : s
-      ));
-      setFilteredSolutions(filteredSolutions.map(s =>
-        s.id === solutionId ? { ...s, comments: [...s.comments, newComment] } : s
-      ));
-      if (recommendedSolution?.id === solutionId) setRecommendedSolution({
-        ...recommendedSolution,
-        comments: [...recommendedSolution.comments, newComment]
-      });
-      setCommentText("");
-    } catch (err) {
-      setErrorMessage("Failed to add comment: " + err.message);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      const refresh = localStorage.getItem('refresh_token');
-      const res = await fetchWithAuth("http://localhost:5000/api/auth/logout", {
-        method: "POST",
-        body: JSON.stringify({ refresh }),
-      });
-      if (res.ok) {
-        clearTokens();
-        setIsLoggedIn(false);
-        setIsPremium(false);
-        setUserId("anonymous");
-        setHealthConcerns([]);
-        window.location.reload();
-      }
-    } catch (err) {
-      setErrorMessage("Error logging out: " + err.message);
-    }
-  };
-
-  const [isScrolled, setIsScrolled] = useState<boolean>(false);
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % 3);
+    }, 5000);
+    
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      clearInterval(interval);
+    };
   }, []);
 
+  const handleMobileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setMobileMenuAnchor(event.currentTarget);
+  };
+
+  const handleMobileMenuClose = () => {
+    setMobileMenuAnchor(null);
+  };
+
+  const testimonials = [
+    {
+      quote: "After years of digestive issues, Ayurvedic Solutions helped me find natural remedies that actually work. My gut health has never been better!",
+      author: "Sarah Johnson",
+      role: "Yoga Instructor",
+      avatar: "/avatars/sarah.jpg"
+    },
+    {
+      quote: "The personalized recommendations transformed my sleep quality. I wake up refreshed after decades of insomnia. This platform is a game-changer!",
+      author: "Michael Chen",
+      role: "Software Engineer",
+      avatar: "/avatars/michael.jpg"
+    },
+    {
+      quote: "As an Ayurvedic practitioner, I love sharing my knowledge with this community. The engagement and results I see are truly rewarding.",
+      author: "Dr. Priya Sharma",
+      role: "Ayurvedic Doctor",
+      avatar: "/avatars/priya.jpg"
+    }
+  ];
+
+  const features = [
+    { icon: <GiHealing className="text-green-600 text-4xl" />, title: "Personalized Remedies", desc: "Get solutions tailored to your dosha type" },
+    { icon: <FaUserMd className="text-yellow-500 text-4xl" />, title: "Expert Verified", desc: "Reviewed by certified practitioners" },
+    { icon: <FaRegClock className="text-green-600 text-4xl" />, title: "Daily Routines", desc: "Discover dinacharya practices" },
+    { icon: <FaLeaf className="text-yellow-500 text-4xl" />, title: "Seasonal Guides", desc: "Adapt with ritucharya recommendations" }
+  ];
+
+  const healthConcerns = [
+    { name: "Digestive Issues", icon: <GiHealthPotion /> },
+    { name: "Stress & Anxiety", icon: <GiMeditation /> },
+    { name: "Skin Problems", icon: <FaHeart /> },
+    { name: "Weight Management", icon: <GiWeight /> },
+    { name: "Chronic Fatigue", icon: <GiSandsOfTime /> },
+    { name: "Joint Pain", icon: <GiHerbsBundle /> }
+  ];
+
   return (
-    <PayPalScriptProvider options={{ "client-id": paypalClientId }}>
-      <Box sx={{ minHeight: "100vh", bgcolor: "#f5f5f5" }}>
-        <AppBar position="sticky" sx={{ bgcolor: isScrolled ? "#388e3c" : "transparent", boxShadow: isScrolled ? 4 : 0 }}>
-          <Toolbar sx={{ maxWidth: "1280px", mx: "auto", width: "100%" }}>
-            <Typography variant="h6" sx={{ flexGrow: 1, color: isScrolled ? "white" : "#388e3c" }}>
-              Ayurvedic Solutions
-            </Typography>
-            {["Home", "Submit", "Solutions", "About", "Contact"].map((item) => (
-              <Button key={item} href={`#${item.toLowerCase()}`} sx={{ color: isScrolled ? "white" : "#388e3c" }}>
-                {item}
-              </Button>
-            ))}
-            {isLoggedIn ? (
-              <>
-                <Button href="/profile" sx={{ color: isScrolled ? "white" : "#388e3c" }}>Profile</Button>
-                <Button onClick={handleLogout} sx={{ color: isScrolled ? "white" : "#388e3c" }}>Logout</Button>
-              </>
-            ) : (
-              <>
-                <Button href="/login" sx={{ color: isScrolled ? "white" : "#388e3c" }}>Login</Button>
-                <Button href="/signup" sx={{ color: isScrolled ? "white" : "#388e3c" }}>Sign Up</Button>
-              </>
-            )}
-            {!isPremium && isLoggedIn && (
-              <Button sx={{ color: "#ffca28" }}>
-                Go Premium
-                <PayPalButtons
-                  style={{ layout: "vertical" }}
-                  createSubscription={(data, actions) => actions.subscription.create({ plan_id: "YOUR_PAYPAL_PLAN_ID" })}
-                  onApprove={async (data) => {
-                    const res = await fetchWithAuth("http://localhost:5000/api/user-profile", {
-                      method: "POST",
-                      body: JSON.stringify({ paypal_subscription_id: data.subscriptionID }),
-                    });
-                    const profileData = await res.json();
-                    setIsPremium(true);
-                    setUserId(profileData.user_id);
-                  }}
-                />
-              </Button>
-            )}
-          </Toolbar>
-        </AppBar>
-
-        <AnimatePresence>
-          {errorMessage && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <Alert severity="error" sx={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", zIndex: 1300 }}>
-                {errorMessage}
-                <IconButton color="inherit" size="small" onClick={() => setErrorMessage("")}>X</IconButton>
-              </Alert>
+    <div className="min-h-screen bg-gray-50">
+      {/* Navbar */}
+      <AppBar position="fixed" className={`transition-all ${isScrolled ? 'bg-green-700/95 backdrop-blur-md shadow-sm' : 'bg-transparent shadow-none'}`}>
+        <Container maxWidth="xl">
+          <Toolbar disableGutters className="flex justify-between items-center w-full">
+            <motion.div whileHover={{ scale: 1.05 }} className="flex items-center">
+              <Typography
+                variant="h6"
+                noWrap
+                className={`flex items-center font-bold ${isScrolled ? 'text-white' : 'text-green-700'}`}
+              >
+                <GiHerbsBundle className="mr-2" />
+                Ayurvedic Solutions
+              </Typography>
             </motion.div>
-          )}
-        </AnimatePresence>
 
-        <Container id="home" sx={{ py: 10, textAlign: "center", bgcolor: "#e8f5e9" }}>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
-            <Typography variant="h3" sx={{ color: "#388e3c", fontWeight: "bold", mb: 2 }}>
-              Ayurvedic Solutions
-            </Typography>
-            <Typography variant="h6" color="textSecondary" sx={{ mb: 4, maxWidth: "600px", mx: "auto" }}>
-              Explore natural remedies tailored to your health needs.
-            </Typography>
-            {isLoggedIn && (
-              <Box sx={{ maxWidth: 600, mx: "auto", mb: 4 }}>
-                <Typography variant="h6" sx={{ mb: 2 }}>Tell us about your health concerns</Typography>
-                <FormGroup>
-                  {healthConcernsList.map(concern => (
-                    <FormControlLabel
-                      key={concern}
-                      control={
-                        <Checkbox
-                          checked={healthConcerns.includes(concern)}
-                          onChange={() => handleHealthConcernChange(concern)}
-                        />
-                      }
-                      label={concern}
-                    />
-                  ))}
-                </FormGroup>
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center gap-2">
+              <motion.div whileHover={{ scale: 1.05 }}>
+                <Button
+                  href="/login"
+                  className={`font-semibold normal-case ${isScrolled ? 'text-white' : 'text-green-700'}`}
+                >
+                  Login
+                </Button>
+              </motion.div>
+              
+              <motion.div whileHover={{ scale: 1.05 }}>
+                <Button
+                  href="/signup"
+                  variant={isScrolled ? "outlined" : "contained"}
+                  className={`font-semibold normal-case ${isScrolled ? 'text-white border-white hover:bg-white/10' : 'bg-green-700 text-white hover:bg-green-800'}`}
+                >
+                  Sign Up
+                </Button>
+              </motion.div>
+            </div>
+
+            {/* Mobile Menu */}
+            <div className="md:hidden">
+              <IconButton
+                size="large"
+                onClick={handleMobileMenuOpen}
+                className={isScrolled ? 'text-white' : 'text-green-700'}
+              >
+                <FaBars />
+              </IconButton>
+              <Menu
+                anchorEl={mobileMenuAnchor}
+                open={Boolean(mobileMenuAnchor)}
+                onClose={handleMobileMenuClose}
+              >
+                <MenuItem onClick={handleMobileMenuClose} component="a" href="/login">
+                  Login
+                </MenuItem>
+                <MenuItem onClick={handleMobileMenuClose} component="a" href="/signup">
+                  Sign Up
+                </MenuItem>
+              </Menu>
+            </div>
+          </Toolbar>
+        </Container>
+      </AppBar>
+
+      {/* Spacer for fixed navbar */}
+      <Toolbar />
+
+      {/* Hero Section */}
+      <div className="relative py-16 text-center bg-gradient-to-b from-green-50 to-white bg-cover bg-center" 
+           style={{ backgroundImage: "url('/images/ayurveda-bg.jpg')" }}>
+        <Container maxWidth="md">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            <motion.div
+              animate={{ scale: [1, 1.02, 1], rotate: [0, 1, -1, 0] }}
+              transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <h1 className="text-3xl sm:text-5xl font-bold text-green-800 mb-4 drop-shadow-sm">
+                Ancient Wisdom for Modern Wellness
+              </h1>
+            </motion.div>
+            
+            <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+              Discover personalized Ayurvedic remedies for your unique mind-body constitution.
+            </p>
+            
+            <div className="flex flex-wrap justify-center gap-4">
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button
                   variant="contained"
-                  sx={{ bgcolor: "#388e3c", mt: 2 }}
-                  onClick={handleHealthConcernsSubmit}
+                  className="bg-green-700 hover:bg-green-800 text-white py-3 px-6 text-lg font-semibold"
+                  href="/signup"
+                  endIcon={<FaArrowRight />}
                 >
-                  Save Concerns
+                  Get Started
                 </Button>
-              </Box>
-            )}
-            <Box sx={{ display: "flex", gap: 2, justifyContent: "center" }}>
-              <Button variant="contained" sx={{ bgcolor: "#388e3c" }} size="large" href="#submit">
-                Submit Your Solution
-              </Button>
-              <Button variant="outlined" sx={{ borderColor: "#388e3c", color: "#388e3c" }} size="large" href="#solutions">
-                Explore Solutions
-              </Button>
-            </Box>
+              </motion.div>
+              
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  variant="outlined"
+                  className="border-green-700 text-green-700 hover:border-green-800 hover:text-green-800 py-3 px-6 text-lg"
+                  href="/about"
+                >
+                  Learn More
+                </Button>
+              </motion.div>
+            </div>
+            
+            <div className="mt-12">
+              <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <img 
+                  src="/images/ayurveda-herbs.png" 
+                  alt="Ayurvedic Herbs"
+                  className="max-w-full w-72 mx-auto drop-shadow-lg"
+                />
+              </motion.div>
+            </div>
           </motion.div>
         </Container>
+      </div>
 
-        <Container sx={{ py: 8 }}>
-          {isLoadingRecommendation ? (
-            <CircularProgress />
-          ) : recommendedSolution ? (
-            <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
-              <Typography variant="h4" sx={{ color: "#388e3c", textAlign: "center", mb: 4 }}>
-                Recommended for You
-              </Typography>
-              <Typography variant="body1" sx={{ textAlign: "center", mb: 2, color: "#388e3c" }}>
-                {recommendationReason}
-              </Typography>
-              <Card sx={{ maxWidth: 600, mx: "auto" }}>
-                <CardMedia
-                  component="img"
-                  height="250"
-                  image={`/images/${recommendedSolution.title.toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                  alt={recommendedSolution.title}
-                  onError={(e) => (e.currentTarget.src = "/images/default-ayurveda.jpg")}
-                />
-                <CardContent>
-                  <Typography variant="h5">{recommendedSolution.title} ({recommendedSolution.solution_id})</Typography>
-                  <List>
-                    {recommendedSolution.description.split('\n').map((item, index) => (
-                      <ListItem key={index}>
-                        <ListItemText primary={item} />
-                      </ListItem>
-                    ))}
-                  </List>
-                  <Box sx={{ mt: 2 }}>
-                    {recommendedSolution.categories.map(cat => (
-                      <Chip key={cat.id} label={cat.name} sx={{ mr: 1 }} />
-                    ))}
-                  </Box>
-                  {recommendedSolution.comments.map(comment => (
-                    <Box key={comment.id} sx={{ mt: 1 }}>
-                      <Typography variant="body2">{comment.user}: {comment.text}</Typography>
-                      <Typography variant="caption" color="textSecondary">{new Date(comment.created_at).toLocaleString()}</Typography>
-                    </Box>
-                  ))}
-                  {isLoggedIn && (
-                    <Box sx={{ mt: 2 }}>
-                      <TextField
-                        label="Add Comment"
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        fullWidth
-                        multiline
-                        rows={2}
-                      />
-                      <Button onClick={() => handleComment(recommendedSolution.id)} sx={{ mt: 1 }}>Post</Button>
-                    </Box>
-                  )}
-                </CardContent>
-                <CardActions sx={{ justifyContent: "space-between" }}>
-                  <Rating
-                    value={null}
-                    onChange={(_, value) => value && trackView(recommendedSolution.id, value)}
-                    precision={1}
-                  />
-                  <IconButton onClick={() => handleFavorite(recommendedSolution.id, recommendedSolution.favorited)}>
-                    {recommendedSolution.favorited ? <FavoriteIcon color="error" /> : <FavoriteBorderIcon />}
-                  </IconButton>
-                </CardActions>
-              </Card>
-            </motion.div>
-          ) : null}
-        </Container>
-
-        <Container sx={{ py: 8, bgcolor: "#fff8e1" }}>
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-            <Typography variant="h4" sx={{ color: "#ffca28", textAlign: "center", mb: 4 }}>Ayurvedic Principles</Typography>
-            <Grid container spacing={4}>
-              {[
-                { icon: <GiHerbsBundle size={50} color="#388e3c" />, title: "Natural Remedies", desc: "Harness the power of herbs." },
-                { icon: <GiMeditation size={50} color="#ffca28" />, title: "Holistic Approach", desc: "Balance mind, body, and spirit." },
-                { icon: <GiHealthPotion size={50} color="#388e3c" />, title: "Preventive Care", desc: "Maintain health daily." },
-              ].map((principle, index) => (
-                <Grid size={4} key={index}>
-                  <Card sx={{ textAlign: "center", p: 2 }}>
+      {/* Stats Section */}
+      <div className="py-12 bg-yellow-50">
+        <Container>
+          <Grid container spacing={4} justifyContent="center">
+            {[
+              { number: '5000+', label: 'Years of Wisdom' },
+              { number: '10K+', label: 'Community Members' },
+              { number: '2K+', label: 'Verified Remedies' },
+              { number: '98%', label: 'Satisfaction Rate' }
+            ].map((stat, index) => (
+              <Grid size={6} key={index}>
+                <motion.div whileHover={{ scale: 1.05 }}>
+                  <Card className="text-center py-6 bg-white/70 backdrop-blur-sm shadow-sm">
                     <CardContent>
-                      {principle.icon}
-                      <Typography variant="h6" sx={{ mt: 2 }}>{principle.title}</Typography>
-                      <Typography variant="body2" color="textSecondary">{principle.desc}</Typography>
+                      <h3 className="text-3xl sm:text-4xl font-bold text-green-700">{stat.number}</h3>
+                      <p className="text-gray-600">{stat.label}</p>
                     </CardContent>
                   </Card>
-                </Grid>
-              ))}
-            </Grid>
-          </motion.div>
-        </Container>
-
-        <Container id="submit" sx={{ py: 8 }}>
-          <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <Typography variant="h4" sx={{ color: "#388e3c", textAlign: "center", mb: 4 }}>Share Your Ayurvedic Solution</Typography>
-            <Card sx={{ maxWidth: 600, mx: "auto", p: 3 }}>
-              <form onSubmit={handleSubmit}>
-                <TextField
-                  label="Title"
-                  value={submitTitle}
-                  onChange={(e) => setSubmitTitle(e.target.value)}
-                  fullWidth
-                  margin="normal"
-                  required
-                />
-                <TextField
-                  label="Description"
-                  value={submitDescription}
-                  onChange={(e) => setSubmitDescription(e.target.value)}
-                  fullWidth
-                  margin="normal"
-                  multiline
-                  rows={6}
-                  required
-                />
-                <Button type="submit" variant="contained" sx={{ bgcolor: "#388e3c", mt: 2 }} fullWidth>
-                  Submit Solution
-                </Button>
-              </form>
-            </Card>
-            <AnimatePresence>
-              {submitSuccess && (
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                  <Alert severity="success" sx={{ mt: 2, mx: "auto", maxWidth: 600 }}>Solution submitted successfully!</Alert>
                 </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        </Container>
-
-        <Container id="solutions" sx={{ py: 8, bgcolor: "#fff8e1" }}>
-          <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <Typography variant="h4" sx={{ color: "#ffca28", textAlign: "center", mb: 4 }}>All Ayurvedic Solutions</Typography>
-            <Box sx={{ display: "flex", justifyContent: "center", mb: 4 }}>
-              <TextField
-                label="Search Solutions"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                sx={{ mr: 2, width: 300 }}
-                InputProps={{ endAdornment: <InputAdornment position="end"><SearchIcon /></InputAdornment> }}
-              />
-              <FormControl sx={{ width: 200 }}>
-                <InputLabel>Category</InputLabel>
-                <Select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
-                  <MenuItem value="all">All</MenuItem>
-                  {categories.map(cat => (
-                    <MenuItem key={cat.id} value={cat.name}>{cat.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-            {isLoadingSolutions ? (
-              <CircularProgress />
-            ) : filteredSolutions.length === 0 ? (
-              <Typography variant="body1" color="textSecondary" align="center">
-                No solutions match your search.
-              </Typography>
-            ) : (
-              <Grid container spacing={4}>
-                {filteredSolutions.map((solution) => (
-                  <Grid size={4} key={solution.id}>
-                    <Card>
-                      <CardMedia
-                        component="img"
-                        height="200"
-
-                        image={`/images/${solution.title.toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                        alt={solution.title}
-                        onError={(e) => (e.currentTarget.src = "/images/default-ayurveda.jpg")}
-                      />
-                      <CardContent>
-                        <Typography variant="h6">{solution.title} ({solution.solution_id})</Typography>
-                        <AnimatePresence>
-                          {expandedSolution === solution.id ? (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-                              <List>
-                                {solution.description.split('\n').map((item, index) => (
-                                  <ListItem key={index}>
-                                    <ListItemText primary={item} />
-                                  </ListItem>
-                                ))}
-                              </List>
-                              <Box sx={{ mt: 1 }}>
-                                {solution.categories.map(cat => (
-                                  <Chip key={cat.id} label={cat.name} sx={{ mr: 1 }} />
-                                ))}
-                              </Box>
-                              {solution.comments.map(comment => (
-                                <Box key={comment.id} sx={{ mt: 1 }}>
-                                  <Typography variant="body2">{comment.user}: {comment.text}</Typography>
-                                  <Typography variant="caption" color="textSecondary">{new Date(comment.created_at).toLocaleString()}</Typography>
-                                </Box>
-                              ))}
-                              {isLoggedIn && (
-                                <Box sx={{ mt: 2 }}>
-                                  <TextField
-                                    label="Add Comment"
-                                    value={commentText}
-                                    onChange={(e) => setCommentText(e.target.value)}
-                                    fullWidth
-                                    multiline
-                                    rows={2}
-                                  />
-                                  <Button onClick={() => handleComment(solution.id)} sx={{ mt: 1 }}>Post</Button>
-                                </Box>
-                              )}
-                            </motion.div>
-                          ) : (
-                            <Typography variant="body2" color="textSecondary" sx={{ overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                              {solution.description.split('\n')[0]}
-                            </Typography>
-                          )}
-                        </AnimatePresence>
-                      </CardContent>
-                      <CardActions sx={{ justifyContent: "space-between" }}>
-                        <Button size="small" onClick={() => setExpandedSolution(expandedSolution === solution.id ? null : solution.id)}>
-                          {expandedSolution === solution.id ? "Show Less" : "Read More"}
-                        </Button>
-                        <Box>
-                          <Rating
-                            value={null}
-                            onChange={(_, value) => value && trackView(solution.id, value)}
-                            precision={1}
-                          />
-                          <IconButton onClick={() => handleFavorite(solution.id, solution.favorited)}>
-                            {solution.favorited ? <FavoriteIcon color="error" /> : <FavoriteBorderIcon />}
-                          </IconButton>
-                        </Box>
-                      </CardActions>
-                    </Card>
-                  </Grid>
-                ))}
               </Grid>
-            )}
-          </motion.div>
-        </Container>
-
-        <Container id="about" sx={{ py: 8 }}>
-          <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <Typography variant="h4" sx={{ color: "#388e3c", textAlign: "center", mb: 4 }}>About Us</Typography>
-            <Typography variant="body1" color="textSecondary" align="center" sx={{ maxWidth: "800px", mx: "auto" }}>
-              Ayurvedic Solutions is a community-driven platform dedicated to sharing the timeless wisdom of Ayurveda.
-            </Typography>
-          </motion.div>
-        </Container>
-
-        <Container sx={{ py: 8, bgcolor: "#fff8e1" }}>
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-            <Typography variant="h4" sx={{ color: "#ffca28", textAlign: "center", mb: 4 }}>Success Stories</Typography>
-            <Grid container spacing={4}>
-              <Grid item xs={12} md={6}>
-                <TestimonialCard quote="Transformed my health!" author="Sarah Johnson" role="Yoga Instructor" />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TestimonialCard quote="Natural remedies that work!" author="Raj Patel" role="Nutritionist" />
-              </Grid>
-            </Grid>
-          </motion.div>
-        </Container>
-
-        <Container id="contact" sx={{ py: 8 }}>
-          <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <Typography variant="h4" sx={{ color: "#388e3c", textAlign: "center", mb: 4 }}>Contact Us</Typography>
-            <Card sx={{ maxWidth: 600, mx: "auto", p: 3 }}>
-              <form onSubmit={handleContactSubmit}>
-                <TextField label="Name" value={contactName} onChange={(e) => setContactName(e.target.value)} fullWidth margin="normal" required />
-                <TextField label="Email" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} fullWidth margin="normal" required />
-                <TextField label="Message" value={contactMessage} onChange={(e) => setContactMessage(e.target.value)} fullWidth margin="normal" multiline rows={6} required />
-                <Button type="submit" variant="contained" sx={{ bgcolor: "#388e3c", mt: 2 }} fullWidth>Send Message</Button>
-              </form>
-            </Card>
-          </motion.div>
-        </Container>
-
-        <Box sx={{ bgcolor: "#388e3c", color: "white", p: 4, textAlign: "center" }}>
-          <Typography variant="body2">© 2025 Ayurvedic Solutions. All rights reserved.</Typography>
-          <Box sx={{ mt: 2, display: "flex", justifyContent: "center", gap: 2 }}>
-            {["About", "Contact", "Privacy"].map((item) => (
-              <Button key={item} href={`#${item.toLowerCase()}`} sx={{ color: "white" }}>{item}</Button>
             ))}
-          </Box>
-        </Box>
-      </Box>
-    </PayPalScriptProvider>
+          </Grid>
+        </Container>
+      </div>
+
+      {/* Features Section */}
+      <Container className="py-16">
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8 }}
+        >
+          <h2 className="text-3xl sm:text-4xl font-bold text-green-700 text-center mb-4">
+            Why Choose Ayurvedic Solutions?
+          </h2>
+          
+          <p className="text-lg text-gray-600 text-center mb-12 max-w-3xl mx-auto">
+            We combine ancient Ayurvedic wisdom with modern technology.
+          </p>
+          
+          <Grid container spacing={4}>
+            {features.map((feature, index) => (
+              <Grid size={6} key={index}>
+                <motion.div whileHover={{ y: -10 }} transition={{ duration: 0.3 }}>
+                  <Card className="text-center p-6 h-full border border-green-200 hover:shadow-lg">
+                    <CardContent>
+                      <motion.div
+                        animate={{ rotate: [0, 5, -5, 0], scale: [1, 1.1, 1] }}
+                        transition={{ duration: 5, repeat: Infinity }}
+                      >
+                        {feature.icon}
+                      </motion.div>
+                      <h3 className="text-xl font-bold mt-4 mb-2">{feature.title}</h3>
+                      <p className="text-gray-600">{feature.desc}</p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </Grid>
+            ))}
+          </Grid>
+        </motion.div>
+      </Container>
+
+      {/* Health Concerns Section */}
+      <div className="py-16 bg-green-50">
+        <Container>
+          <h2 className="text-3xl sm:text-4xl font-bold text-green-700 text-center mb-12">
+            Common Health Concerns
+          </h2>
+          
+          <Grid container spacing={3} justifyContent="center">
+            {healthConcerns.map((concern, index) => (
+              <Grid size={6} key={index}>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Card className="text-center p-4 cursor-pointer hover:bg-green-100">
+                    <CardContent>
+                      <Avatar className="bg-green-300 w-14 h-14 mx-auto mb-3">
+                        {concern.icon}
+                      </Avatar>
+                      <p className="font-medium">{concern.name}</p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </Grid>
+            ))}
+          </Grid>
+        </Container>
+      </div>
+
+      {/* Testimonials Section */}
+      <div className="py-16 bg-yellow-50">
+        <Container>
+          <h2 className="text-3xl sm:text-4xl font-bold text-yellow-600 text-center mb-12">
+            Success Stories
+          </h2>
+          
+          <div className="relative min-h-96">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentSlide}
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                transition={{ duration: 0.5 }}
+                className="absolute w-full"
+              >
+                <TestimonialCard {...testimonials[currentSlide]} />
+              </motion.div>
+            </AnimatePresence>
+            
+            <div className="flex justify-center mt-8 gap-1">
+              {[0, 1, 2].map((index) => (
+                <IconButton
+                  key={index}
+                  onClick={() => setCurrentSlide(index)}
+                  className="p-0"
+                >
+                  <div className={`w-3 h-3 rounded-full ${currentSlide === index ? 'bg-yellow-600' : 'bg-gray-300'}`} />
+                </IconButton>
+              ))}
+            </div>
+          </div>
+        </Container>
+      </div>
+
+      {/* CTA Section */}
+      <div className="py-16 text-center text-white" 
+           style={{ background: "linear-gradient(rgba(56, 142, 60, 0.9), url('/images/ayurveda-pattern.jpg') center/cover" }}>
+        <Container maxWidth="md">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            whileInView={{ scale: 1, opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2 className="text-3xl sm:text-4xl font-bold mb-6">
+              Ready to Transform Your Health?
+            </h2>
+            
+            <p className="text-xl mb-8 max-w-2xl mx-auto">
+              Join thousands who have discovered the power of Ayurveda.
+            </p>
+            
+            <div className="flex flex-wrap justify-center gap-4">
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  variant="contained"
+                  className="bg-white text-green-700 py-3 px-8 text-lg font-bold hover:bg-gray-50"
+                  href="/signup"
+                >
+                  Sign Up Free
+                </Button>
+              </motion.div>
+              
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  variant="outlined"
+                  className="border-white text-white py-3 px-8 text-lg font-bold hover:bg-white/10"
+                  href="/about"
+                >
+                  Learn More
+                </Button>
+              </motion.div>
+            </div>
+          </motion.div>
+        </Container>
+      </div>
+
+      {/* Footer */}
+      <footer className="bg-green-900 text-white pt-12 pb-6">
+        <Container>
+          <Grid container spacing={6}>
+            <Grid size={4}>
+              <h3 className="text-xl font-bold mb-4 flex items-center">
+                <GiHerbsBundle className="mr-2" />
+                Ayurvedic Solutions
+              </h3>
+              <p className="mb-4">Bringing ancient healing wisdom to modern lifestyles.</p>
+            </Grid>
+            
+            <Grid size={2}>
+              <h4 className="text-lg font-bold mb-4">Resources</h4>
+              <ul className="space-y-2">
+                {['Blog', 'Research', 'Guides', 'Webinars'].map((item) => (
+                  <li key={item} className="hover:underline cursor-pointer">{item}</li>
+                ))}
+              </ul>
+            </Grid>
+            
+            <Grid size={2}>
+              <h4 className="text-lg font-bold mb-4">Company</h4>
+              <ul className="space-y-2">
+                {['About', 'Careers', 'Press', 'Contact'].map((item) => (
+                  <li key={item} className="hover:underline cursor-pointer">{item}</li>
+                ))}
+              </ul>
+            </Grid>
+            
+            <Grid size={4}>
+              <h4 className="text-lg font-bold mb-4">Newsletter</h4>
+              <div className="flex mb-4">
+                <input 
+                  type="email" 
+                  placeholder="Your email"
+                  className="flex-grow p-3 rounded-l focus:outline-none text-gray-800"
+                />
+                <Button 
+                  variant="contained" 
+                  className="bg-yellow-600 hover:bg-yellow-700 rounded-l-none px-4"
+                >
+                  Subscribe
+                </Button>
+              </div>
+              <p className="text-sm">Get wellness tips and updates</p>
+            </Grid>
+          </Grid>
+          
+          <Divider className="my-6 bg-white/20" />
+          
+          <div className="flex flex-col sm:flex-row justify-between items-center">
+            <p>© 2025 Ayurvedic Solutions. All rights reserved.</p>
+            <div className="flex gap-4 mt-4 sm:mt-0">
+              {['Privacy', 'Terms', 'Sitemap'].map((item) => (
+                <span key={item} className="hover:underline cursor-pointer">{item}</span>
+              ))}
+            </div>
+          </div>
+        </Container>
+      </footer>
+    </div>
   );
 }

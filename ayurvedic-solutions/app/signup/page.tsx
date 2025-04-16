@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Container, Typography, TextField, Button, Alert } from "@mui/material";
-import { storeTokens } from "../../lib/auth";
+import { storeTokens } from "../lib/auth";
 
 export default function Signup() {
   const [username, setUsername] = useState("");
@@ -27,7 +27,7 @@ export default function Signup() {
       const data = await res.json();
       storeTokens(data.access, data.refresh);
       router.push("/");
-    } catch (err) {
+    } catch (err: any) {
       setErrorMessage("Signup failed: " + err.message);
     }
   };

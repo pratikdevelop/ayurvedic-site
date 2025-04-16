@@ -48,6 +48,9 @@ export default function RootLayout({
   rel="stylesheet"
   href="https://fonts.googleapis.com/icon?family=Material+Icons"
 />
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Acme&family=Bree+Serif&display=swap" rel="stylesheet"></link>
       </head>
       <body
       >
