@@ -106,14 +106,14 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
-      <AppBar position="fixed" className={`transition-all ${isScrolled ? 'bg-green-700/95 backdrop-blur-md shadow-sm' : 'bg-transparent shadow-none'}`}>
+      <AppBar position="fixed" color="success" variant="elevation"  className={`transition-al shadow-md`}>
         <Container maxWidth="xl">
           <Toolbar disableGutters className="flex justify-between items-center w-full">
             <motion.div whileHover={{ scale: 1.05 }} className="flex items-center">
               <Typography
                 variant="h6"
                 noWrap
-                className={`flex items-center font-bold ${isScrolled ? 'text-white' : 'text-green-700'}`}
+                className={`flex items-center font-bold text-white`}
               >
                 <GiHerbsBundle className="mr-2" />
                 Ayurvedic Solutions
@@ -125,7 +125,9 @@ export default function Home() {
               <motion.div whileHover={{ scale: 1.05 }}>
                 <Button
                   href="/login"
-                  className={`font-semibold normal-case ${isScrolled ? 'text-white' : 'text-green-700'}`}
+                  variant="text"
+                  color="white"
+                  className={`font-semibold normal-case text-white`}
                 >
                   Login
                 </Button>
@@ -134,8 +136,9 @@ export default function Home() {
               <motion.div whileHover={{ scale: 1.05 }}>
                 <Button
                   href="/signup"
-                  variant={isScrolled ? "outlined" : "contained"}
-                  className={`font-semibold normal-case ${isScrolled ? 'text-white border-white hover:bg-white/10' : 'bg-green-700 text-white hover:bg-green-800'}`}
+                  variant="text"
+                  color="white"
+                 
                 >
                   Sign Up
                 </Button>
@@ -173,7 +176,7 @@ export default function Home() {
 
       {/* Hero Section */}
       <div className="relative py-16 text-center bg-gradient-to-b from-green-50 to-white bg-cover bg-center" 
-           style={{ backgroundImage: "url('/images/ayurveda-bg.jpg')" }}>
+           >
         <Container maxWidth="md">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -216,18 +219,18 @@ export default function Home() {
               </motion.div>
             </div>
             
-            <div className="mt-12">
+            {/* <div className="mt-12">
               <motion.div
                 animate={{ y: [0, -10, 0] }}
                 transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
               >
                 <img 
-                  src="/images/ayurveda-herbs.png" 
+                  src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRQUBs_aRpl3M8P632uCezVcgiXlPy0pzTXZQ&s" 
                   alt="Ayurvedic Herbs"
-                  className="max-w-full w-72 mx-auto drop-shadow-lg"
+                  className="max-w-full w-72  mx-auto drop-shadow-lg"
                 />
               </motion.div>
-            </div>
+            </div> */}
           </motion.div>
         </Container>
       </div>
@@ -368,11 +371,11 @@ export default function Home() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl sm:text-4xl font-bold mb-6">
+            <h2 className="text-3xl text-slate-900 sm:text-4xl font-bold mb-6">
               Ready to Transform Your Health?
             </h2>
             
-            <p className="text-xl mb-8 max-w-2xl mx-auto">
+            <p className="text-xl mb-8 text-slate-900 max-w-2xl mx-auto">
               Join thousands who have discovered the power of Ayurveda.
             </p>
             
